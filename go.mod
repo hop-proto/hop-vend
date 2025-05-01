@@ -2,7 +2,10 @@ module hop.computer/vend
 
 go 1.23.3
 
-require github.com/spf13/viper v1.20.1
+require (
+	github.com/spf13/viper v1.20.1
+	golang.org/x/oauth2 v0.25.0
+)
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
