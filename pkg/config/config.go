@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -28,6 +29,8 @@ func Load() (*Config, error) {
 
 	// Environment variables override config file
 	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.SetEnvPrefix("hop_vend")
 
 	// Set default values
 	viper.SetDefault("ServerAddress", ":8080")
@@ -54,7 +57,7 @@ func Load() (*Config, error) {
 		missingFields = append(missingFields, "GitHubClientID")
 	}
 	if cfg.GitHubClientSecret == "" {
-		missingFields = append(missingFields, "GitHubClientSecret")
+		missingFields = append(missingFields, "github.client_secret")
 	}
 	if cfg.GitHubOrg == "" {
 		missingFields = append(missingFields, "GitHubOrg")
