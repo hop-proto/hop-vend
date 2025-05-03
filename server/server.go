@@ -12,7 +12,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 
-	"hop.computer/vend/pkg/config"
+	"hop.computer/vend/server/config"
 )
 
 type Server struct {

@@ -4,8 +4,8 @@ import (
 	"log"
 	"log/slog"
 
-	"hop.computer/vend/pkg/config"
 	"hop.computer/vend/server"
+	"hop.computer/vend/server/config"
 )
 
 func main() {
