@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/subtle"
 	"fmt"
 	"log/slog"
@@ -12,6 +11,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 
+	"hop.computer/hop/pkg/must"
 	"hop.computer/vend/server/config"
 )
 
@@ -56,10 +56,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	rawState := make([]byte, 4)
-	_, err := rand.Read(rawState)
-	if err != nil {
-		panic("unable to read random: " + err.Error())
-	}
+	must.ReadRandom(rawState)
 	state := SignStateToString(rawState, s.stateSigningKey)
 	url := s.oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOnline)
 	slog.Debug("generate callback", "state", state, "url", url)

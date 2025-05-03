@@ -1,0 +1,14 @@
+In `~/.gitconfig`:
+
+```
+[url "ssh://git@github.com/hop-proto/hop-go"]
+	insteadOf = https://github.com/hop-proto/hop-go
+
+```
+
+Then, when running `go get`:
+
+```console
+GOPRIVATE='github.com/hop-proto/*' go get ./...
+```
+
