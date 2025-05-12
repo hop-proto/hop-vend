@@ -26,7 +26,6 @@ type Server struct {
 	oauthConfig      *oauth2.Config
 	stateVerifyKey   ed25519.PublicKey
 	stateSigningKey  ed25519.PrivateKey
-	certIssuingKey   keys.SigningPrivateKey
 	intermediateCert *certs.Certificate
 }
 
@@ -46,6 +45,10 @@ func New(cfg *config.Config) *Server {
 	if err != nil {
 		pkg.Panicf("unable to read issuing private key %s: %s", cfg.IntermediateKeyPath, err)
 	}
+	p := &interKey.Private
+	if err := inter.ProvideKey((*[32]byte)(p)); err != nil {
+		pkg.Panicf("mismatched private key: %s", err)
+	}
 	return &Server{
 		cfg: cfg,
 		oauthConfig: &oauth2.Config{
@@ -56,7 +59,6 @@ func New(cfg *config.Config) *Server {
 		},
 		stateVerifyKey:   public,
 		stateSigningKey:  private,
-		certIssuingKey:   interKey.Private,
 		intermediateCert: inter,
 	}
 }
@@ -209,10 +211,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		defer resp.Body.Close()
 	}
-	fmt.Fprintf(w, "gh access token %s", token.AccessToken)
+	fmt.Fprintf(w, "gh access token %s\n", token.AccessToken)
 
-	// TODO(dadrian): Issue Hop certificate here based on Github username
+	// Issue Hop certificate here based on Github username
 	//
+	// TODO(dadrian): Pipe a public key through `state`
 	// The struggle here is that we don't know what public key to issue to. If
 	// we want to avoid storing state in this program, then we want to somehow
 	// we want to shuffle the private key through the `state` variable during
@@ -220,8 +223,20 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// app at some endpoint before doing the redirect on login. This could be,
 	// e.g., via a form on /login (or by query parameter).
 	//
-	//identity := certs.LeafIdentity()
-	//certs.IssueLeaf(s.intermediateCert, identity)
+	// For now, just issue to a random identity
+	clientKey := keys.GenerateNewX25519KeyPair()
+	identity := certs.LeafIdentity(clientKey, certs.RawStringName(user.Login))
+	cert, err := certs.IssueLeaf(s.intermediateCert, identity)
+	if err != nil {
+		http.Error(w, "unable to issue cert: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	certBytes, err := certs.EncodeCertificateToPEM(cert)
+	if err != nil {
+		http.Error(w, "unable to write cert: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "%s\n", certBytes)
 }
 
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
