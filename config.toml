@@ -4,8 +4,8 @@ client_secret = ""
 org = "hop-proto"
 
 [ca]
-cert_path = "./root.pem"
-key_path = "./root.key.pem"
+cert_path = "./intermediate.pem"
+key_path = "./intermediate.key.pem"
 
 [credential]
 validity_seconds = 3600

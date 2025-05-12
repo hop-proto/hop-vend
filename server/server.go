@@ -13,22 +13,38 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 
+	"hop.computer/hop/certs"
+	"hop.computer/hop/keys"
+	"hop.computer/hop/pkg"
 	"hop.computer/hop/pkg/must"
 	"hop.computer/vend/server/config"
 	"hop.computer/vend/server/gh"
 )
 
 type Server struct {
-	cfg             *config.Config
-	oauthConfig     *oauth2.Config
-	stateVerifyKey  ed25519.PublicKey
-	stateSigningKey ed25519.PrivateKey
+	cfg              *config.Config
+	oauthConfig      *oauth2.Config
+	stateVerifyKey   ed25519.PublicKey
+	stateSigningKey  ed25519.PrivateKey
+	certIssuingKey   keys.SigningPrivateKey
+	intermediateCert *certs.Certificate
 }
 
 func New(cfg *config.Config) *Server {
 	public, private, err := ed25519.GenerateKey(nil)
 	if err != nil {
-		panic("unable to generate ed25519 key: " + err.Error())
+		pkg.Panicf("unable to generate ed25519 key: %s", err)
+	}
+	inter, err := certs.ReadCertificatePEMFile(cfg.IntermediateCAPath)
+	if err != nil {
+		pkg.Panicf("unable to read intermediate CA at %s: %s", cfg.IntermediateCAPath, err)
+	}
+	if inter.Type != certs.Intermediate {
+		pkg.Panicf("intermediate %s is a %s, not an intermediate", cfg.IntermediateCAPath, inter.Type)
+	}
+	interKey, err := keys.ReadSigningPrivateKeyPEMFile(cfg.IntermediateKeyPath)
+	if err != nil {
+		pkg.Panicf("unable to read issuing private key %s: %s", cfg.IntermediateKeyPath, err)
 	}
 	return &Server{
 		cfg: cfg,
@@ -38,8 +54,10 @@ func New(cfg *config.Config) *Server {
 			Scopes:       []string{"read:user", "read:org"},
 			Endpoint:     github.Endpoint,
 		},
-		stateVerifyKey:  public,
-		stateSigningKey: private,
+		stateVerifyKey:   public,
+		stateSigningKey:  private,
+		certIssuingKey:   interKey.Private,
+		intermediateCert: inter,
 	}
 }
 

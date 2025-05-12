@@ -13,8 +13,8 @@ type Config struct {
 	GitHubClientSecret string
 	GitHubOrg          string
 
-	RootCAPath          string
-	RootKeyPath         string
+	IntermediateCAPath  string
+	IntermediateKeyPath string
 	CertValiditySeconds int
 
 	ServerAddress string
@@ -46,8 +46,8 @@ func Load() (*Config, error) {
 		GitHubClientID:      viper.GetString("github.client_id"),
 		GitHubClientSecret:  viper.GetString("github.client_secret"),
 		GitHubOrg:           viper.GetString("github.org"),
-		RootCAPath:          viper.GetString("ca.cert_path"),
-		RootKeyPath:         viper.GetString("ca.key_path"),
+		IntermediateCAPath:  viper.GetString("ca.cert_path"),
+		IntermediateKeyPath: viper.GetString("ca.key_path"),
 		CertValiditySeconds: viper.GetInt("credential.validity_seconds"),
 		ServerAddress:       viper.GetString("ServerAddress"),
 	}
@@ -64,11 +64,11 @@ func Load() (*Config, error) {
 	if cfg.GitHubOrg == "" {
 		missingFields = append(missingFields, "GitHubOrg")
 	}
-	if cfg.RootCAPath == "" {
-		missingFields = append(missingFields, "RootCAPath")
+	if cfg.IntermediateCAPath == "" {
+		missingFields = append(missingFields, "IntermedaiteCAPath")
 	}
-	if cfg.RootKeyPath == "" {
-		missingFields = append(missingFields, "RootKeyPath")
+	if cfg.IntermediateKeyPath == "" {
+		missingFields = append(missingFields, "IntermediateKeyPath")
 	}
 	if len(missingFields) > 0 {
 		return nil, fmt.Errorf("missing required configuration fields: %v", missingFields)
