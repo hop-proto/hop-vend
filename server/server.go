@@ -212,6 +212,16 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "gh access token %s", token.AccessToken)
 
 	// TODO(dadrian): Issue Hop certificate here based on Github username
+	//
+	// The struggle here is that we don't know what public key to issue to. If
+	// we want to avoid storing state in this program, then we want to somehow
+	// we want to shuffle the private key through the `state` variable during
+	// the exchange. This means we would want to provide the public key to the
+	// app at some endpoint before doing the redirect on login. This could be,
+	// e.g., via a form on /login (or by query parameter).
+	//
+	//identity := certs.LeafIdentity()
+	//certs.IssueLeaf(s.intermediateCert, identity)
 }
 
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
