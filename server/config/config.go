@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -50,6 +51,7 @@ func Load() (*Config, error) {
 		CertValiditySeconds: viper.GetInt("credential.validity_seconds"),
 		ServerAddress:       viper.GetString("ServerAddress"),
 	}
+	slog.Info("github", "client_id", cfg.GitHubClientID)
 
 	// Basic validation
 	missingFields := []string{}
