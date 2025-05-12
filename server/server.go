@@ -78,14 +78,23 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	rawState := make([]byte, 4)
-	must.ReadRandom(rawState)
-	state := SignStateToString(rawState, s.stateSigningKey)
-	url := s.oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOnline)
+	rand := make([]byte, 4)
+	must.ReadRandom(rand)
+	state := State{
+		Random: rand,
+		//PublicKey: r.URL.Query().Get("public"),
+		PublicKey: "hop-dh-v1-DroIRTg9HS42NgJzX/PqwfWAkCc1306xPiKMcwR/uE0=",
+	}
+	sst, err := SignStateToString(&state, s.stateSigningKey)
+	if err != nil {
+		http.Error(w, "unable to issue cookie: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	url := s.oauthConfig.AuthCodeURL(sst, oauth2.AccessTypeOnline)
 	slog.Debug("generate callback", "state", state, "url", url)
 	// TODO(dadrian)[2025-04-30]: Determine if these are the cookie settings we
 	// want. Set expiry, etc.
-	http.SetCookie(w, &http.Cookie{Name: "state", Value: state})
+	http.SetCookie(w, &http.Cookie{Name: "state", Value: sst})
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
@@ -108,12 +117,12 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state := r.URL.Query().Get("state")
-	if state == "" {
+	stateParam := r.URL.Query().Get("state")
+	if stateParam == "" {
 		http.Error(w, "missing state", http.StatusBadRequest)
 		return
 	}
-	rawURLState, err := RawStateTokenFromString(state)
+	rawURLState, err := RawStateTokenFromString(stateParam)
 	if err != nil {
 		http.Error(w, "bad state", http.StatusBadRequest)
 		return
@@ -123,11 +132,17 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad state", http.StatusBadRequest)
 		return
 	}
-
 	if subtle.ConstantTimeCompare(urlState.Value, cookieState.Value) != 1 {
 		http.Error(w, "mismatched state", http.StatusBadRequest)
 		return
 	}
+
+	decoded, err := urlState.Unmarshal()
+	if err != nil {
+		http.Error(w, "invalid state", http.StatusBadRequest)
+		return
+	}
+
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Error(w, "missing code", http.StatusBadRequest)
@@ -224,8 +239,21 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// e.g., via a form on /login (or by query parameter).
 	//
 	// For now, just issue to a random identity
-	clientKey := keys.GenerateNewX25519KeyPair()
-	identity := certs.LeafIdentity(clientKey, certs.RawStringName(user.Login))
+	clientPublic, err := keys.ParseDHPublicKey(decoded.PublicKey)
+	if err != nil {
+		s := fmt.Sprintf("invalid public key %q: %s", decoded.PublicKey, err)
+		http.Error(w, s, http.StatusBadRequest)
+		return
+	}
+	// TODO(dadrian): This API is stupid, why do I need a full key pair? It's
+	// probably because some identity-related functions want the private key.
+	// Why isn't there a helper function for public key only identities? Can
+	// this function take a different type?
+	clientKey := keys.X25519KeyPair{
+		Public: *clientPublic,
+	}
+	identity := certs.LeafIdentity(&clientKey, certs.RawStringName(user.Login))
+	// TODO(dadrian): How do we set parameters on this? Expiration, etc.
 	cert, err := certs.IssueLeaf(s.intermediateCert, identity)
 	if err != nil {
 		http.Error(w, "unable to issue cert: "+err.Error(), http.StatusInternalServerError)
@@ -240,6 +268,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
-	// TODO: Validate GitHub token, check org membership, issue cert
+	// Fun trick---if we do everything in callback, we don't have to maintain
+	// state. If we don't do everything in callback, we need to make sure we
+	// don't reissue the same credential. We might be able to avoid this if we
+	// keep enough data in the cookie / state field. If the state query param
+	// gets too big, we can switch it to an HMAC of the cookie or something like
+	// that.
 	http.Error(w, "not implemented", http.StatusNotImplemented)
 }
