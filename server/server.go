@@ -192,6 +192,8 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		defer resp.Body.Close()
 	}
 	fmt.Fprintf(w, "gh access token %s", token.AccessToken)
+
+	// TODO(dadrian): Issue Hop certificate here based on Github username
 }
 
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,42 @@
-In `~/.gitconfig`:
+# hop-vend
+
+Hop Vend is an implementation of a Github Application that issues Hop client
+certificates based on membership within a Github organization. To run Hop Vend,
+you will need to create a Github App in your user settings on Github, make it
+public, and attach it the organization whose membership you want to check.
+
+## Configuration
+
+### Github App
+
+On Github, go to your user settings (Click Profile Picture -> Settings). Then,
+on the left, click Developer Settings. Create a new **Github Application**, not
+an OAuth integration. You will need the client ID and client secret to configure Hop Vend.
+
+In the application configuration, grant Permissions -> Organizations -> Read Members.
+
+To install the app to an organization, you will need to make it public, which you can do so from the app settings -> Advanced page.
+
+### Hop Vend
+
+Set `client_id` and `client_secret` in the `[github]` section of your
+config.toml. You can optionally set configuration as environment variables
+prefixed with `HOP_VEND_`, e.g. `HOP_VEND_GITHUB_CLIENT_SECRET`. Set `org` to
+the name of the Github organization to be checked for membership.
+
+In the `[ca]` section, set `cert_path` and `key_path`.
+
+The properties of the issued certificate are set in the `[credential]` section.
+
+## Developing and Building
+
+This project depends on Hop itself, so you need to make sure your Go can pull
+private Golang respositories until we open-source Hop. This consists of two
+steps---ensuring that `go get` uses SSH (or setting up an access token, but
+don't do that), and information `go get` that it shouldn't check the
+transparency information because the repository is private.
+
+To do this, in `~/.gitconfig` add:
 
 ```
 [url "ssh://git@github.com/hop-proto/hop-go"]
@@ -6,9 +44,8 @@ In `~/.gitconfig`:
 
 ```
 
-Then, when running `go get`:
+Then, when running `go get` to fetch dependencies:
 
 ```console
 GOPRIVATE='github.com/hop-proto/*' go get ./...
 ```
-
