@@ -4,15 +4,18 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 
 	"hop.computer/hop/pkg/must"
 	"hop.computer/vend/server/config"
+	"hop.computer/vend/server/gh"
 )
 
 type Server struct {
@@ -117,6 +120,15 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Unset the cookie
+	// TODO(dadrian): This might actually be a bad idea. If the OAuth request
+	// gets replayed, e.g. because the user clicked back, it's unclear which
+	// state value Github will want to use.
+	//
+	// It may make more sense to keep the cookie, and just track a bunch of
+	// state server-side.
+	//
+	// Alternatively, depending on how this app shakes out, maybe the server can
+	// be completely stateless.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "state",
 		Value:    "",
@@ -124,7 +136,62 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
-	fmt.Fprintf(w, "Access token: %s", token.AccessToken)
+	// Use the access token to fetch the user's organizations, and compare to
+	// the target organization in the configuration.
+
+	// Begin by fetching the user to get their organizations URL.
+	client := s.oauthConfig.Client(ctx, token)
+	var user gh.User
+	{
+		resp, err := client.Get("https://api.github.com/user")
+
+		if err != nil || resp.StatusCode != http.StatusOK {
+			http.Error(w, "failed to fetch user", http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+			http.Error(w, "failed to decode user", http.StatusInternalServerError)
+			return
+		}
+		slog.Info("github api", "user", user)
+	}
+
+	{
+		var orgs []gh.Organization
+		resp, err := client.Get(user.OrganizationsURL)
+
+		if err != nil || resp.StatusCode != http.StatusOK {
+			http.Error(w, "failed to fetch orgs", http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		if err := json.NewDecoder(resp.Body).Decode(&orgs); err != nil {
+			http.Error(w, "failed to decode orgs", http.StatusInternalServerError)
+			return
+		}
+		slog.Info("github api", "orgs", orgs)
+
+	}
+
+	// Use the username of the user and the org name from the configuration to
+	// check membership. There is an API call specific for this that returns
+	// 204.
+	// https://api.github.com/orgs/ORG/members/USERNAME
+	{
+		url := fmt.Sprintf("https://api.github.com/orgs/%s/members/%s", url.PathEscape(s.cfg.GitHubOrg), url.PathEscape(user.Login))
+		slog.Info("github api", "url", url, "user", user.Login, "org", s.cfg.GitHubOrg)
+		resp, err := client.Get(url)
+
+		if err != nil || resp.StatusCode != 204 {
+			http.Error(w, fmt.Sprintf("bad status %d", resp.StatusCode), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+	}
+	fmt.Fprintf(w, "gh access token %s", token.AccessToken)
 }
 
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {

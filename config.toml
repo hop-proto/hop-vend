@@ -1,7 +1,7 @@
 [github]
 client_id = "Iv23liA9njJPZDKsbFHQ"
 client_secret = ""
-org = "hop"
+org = "hop-proto"
 
 [ca]
 cert_path = "./root.pem"
