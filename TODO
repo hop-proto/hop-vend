@@ -1,0 +1,10 @@
+Goal: The server should be running a Hop Server. The Hop server should accept
+connections from any credential, however it should solely return a login URL.
+That login URL can be the existing OAuth endpoint on hop-vend server.
+- The Hop connection should be tracked in the state object used for OAuth
+- After successful OAuth, `hop-vend` should issue a certificate to the key used
+   for the Hop connection via some connection to `hop-agent`.
+- The connection to `hop-agent` should be authenticated on both sides via
+  information transmitted over the Hop connection
+- `hop-agent` should authenticate the request to add the certificate and then
+  add the certificate to its store.
