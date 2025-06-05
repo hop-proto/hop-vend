@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/ed25519"
+	"reflect"
 	"testing"
 )
 
@@ -11,10 +12,13 @@ func TestSignAndVerifyStateToken(t *testing.T) {
 		t.Fatalf("failed to generate key: %v", err)
 	}
 
-	state := []byte("some-random-state")
+	state := &State{Random: []byte("some-random-state"), PublicKey: "test"}
 
 	// Sign and encode the state to string
-	tokenStr := SignStateToString(state, privateKey)
+	tokenStr, err := SignStateToString(state, privateKey)
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
 
 	// Decode the string back into a RawStateToken
 	rawToken, err := RawStateTokenFromString(tokenStr)
@@ -28,8 +32,13 @@ func TestSignAndVerifyStateToken(t *testing.T) {
 		t.Fatalf("failed to verify token: %v", err)
 	}
 
-	if string(verifiedToken.Value) != string(state) {
-		t.Errorf("expected state %q, got %q", state, verifiedToken.Value)
+	dec, err := verifiedToken.Unmarshal()
+	if err != nil {
+		t.Fatalf("failed to unmarshal token: %v", err)
+	}
+
+	if !reflect.DeepEqual(dec, state) {
+		t.Errorf("expected state %#v, got %#v", state, dec)
 	}
 
 	// Double-check signature against manual verification
