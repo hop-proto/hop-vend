@@ -3,11 +3,13 @@ name: GolangCI-Lint
 on:
   push:
     paths:
+      - go.mod
       - '**.go'
       - .github/workflows/golangci-lint.yml
       - .golangci.yml
   pull_request:
     paths:
+      - go.mod
       - '**.go'
       - .github/workflows/golangci-lint.yml
       - .golangci.yml
