@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"testing"
 )
@@ -11,10 +12,16 @@ func TestSignAndVerifyStateToken(t *testing.T) {
 		t.Fatalf("failed to generate key: %v", err)
 	}
 
-	state := []byte("some-random-state")
+	state := &State{
+		Random:    []byte("some-random-state"),
+		PublicKey: "pub",
+	}
 
 	// Sign and encode the state to string
-	tokenStr := SignStateToString(state, privateKey)
+	tokenStr, err := SignStateToString(state, privateKey)
+	if err != nil {
+		t.Fatalf("failed to sign state: %v", err)
+	}
 
 	// Decode the string back into a RawStateToken
 	rawToken, err := RawStateTokenFromString(tokenStr)
@@ -22,20 +29,22 @@ func TestSignAndVerifyStateToken(t *testing.T) {
 		t.Fatalf("failed to decode token string: %v", err)
 	}
 
-	// Verify the token
-	verifiedToken, err := rawToken.Verify(publicKey)
+	// Verify and decode the token
+	decodedState, err := rawToken.VerifyAndDecode(publicKey)
 	if err != nil {
 		t.Fatalf("failed to verify token: %v", err)
 	}
 
-	if string(verifiedToken.Value) != string(state) {
-		t.Errorf("expected state %q, got %q", state, verifiedToken.Value)
+	if !bytes.Equal(decodedState.Random, state.Random) || decodedState.PublicKey != state.PublicKey {
+		t.Errorf("decoded state does not match original")
 	}
 
 	// Double-check signature against manual verification
-	sig := verifiedToken.Signature
-	msg := verifiedToken.Value
-	if !ed25519.Verify(publicKey, msg, sig) {
+	signed, err := rawToken.Verify(publicKey)
+	if err != nil {
+		t.Fatalf("failed to verify token: %v", err)
+	}
+	if !ed25519.Verify(publicKey, signed.Value, signed.Signature) {
 		t.Errorf("manual verification of signature failed")
 	}
 }
