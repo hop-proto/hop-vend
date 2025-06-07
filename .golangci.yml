@@ -1,0 +1,12 @@
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - gofmt
+    - goimports
+    - staticcheck
+
+# Add additional linters to the enable list to allow them.
