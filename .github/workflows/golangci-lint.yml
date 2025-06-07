@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
-      GOPRIVATE: hop.computer
+      GOPRIVATE: github.com/hop-proto/*
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
