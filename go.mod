@@ -28,8 +28,9 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
-	hop.computer/hop v0.0.0
+        gopkg.in/yaml.v3 v3.0.1 // indirect
+	github.com/golangci/golangci-lint/cmd/golangci-lint v1.55.2 // indirect
+        hop.computer/hop v0.0.0
 )
 
 replace hop.computer/hop v0.0.0 => github.com/hop-proto/hop-go v0.0.0-20250512032955-70afe8e929d2

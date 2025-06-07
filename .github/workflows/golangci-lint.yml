@@ -1,0 +1,30 @@
+name: GolangCI-Lint
+
+on:
+  push:
+    paths:
+      - '**.go'
+      - .github/workflows/golangci-lint.yml
+      - .golangci.yml
+  pull_request:
+    paths:
+      - '**.go'
+      - .github/workflows/golangci-lint.yml
+      - .golangci.yml
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+      GOPRIVATE: github.com/hop-proto/*
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.1
+          args: --config=.golangci.yml
