@@ -9,3 +9,6 @@ key_path = "./intermediate.key.pem"
 
 [credential]
 validity_seconds = 3600
+
+[hop]
+address = ":7777"

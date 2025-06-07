@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
@@ -17,6 +19,7 @@ import (
 	"hop.computer/hop/keys"
 	"hop.computer/hop/pkg"
 	"hop.computer/hop/pkg/must"
+	"hop.computer/hop/transport"
 	"hop.computer/vend/server/config"
 	"hop.computer/vend/server/gh"
 )
@@ -64,6 +67,11 @@ func New(cfg *config.Config) *Server {
 }
 
 func (s *Server) Start() error {
+	go func() {
+		if err := s.startHop(); err != nil {
+			slog.Error("hop server exited", "error", err)
+		}
+	}()
 	http.HandleFunc("/healthz", s.handleHealthz)
 	http.HandleFunc("/login", s.handleLogin)
 	http.HandleFunc("/callback", s.handleCallback)
@@ -275,4 +283,31 @@ func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
 	// gets too big, we can switch it to an HMAC of the cookie or something like
 	// that.
 	http.Error(w, "not implemented", http.StatusNotImplemented)
+}
+
+func (s *Server) startHop() error {
+	key := keys.GenerateNewX25519KeyPair()
+	identity := certs.LeafIdentity(key, certs.RawStringName("vend-server"))
+	cert, err := certs.IssueLeaf(s.intermediateCert, identity)
+	if err != nil {
+		return err
+	}
+	conn, err := net.ListenPacket("udp", s.cfg.HopAddress)
+	if err != nil {
+		return err
+	}
+	cfg := transport.ServerConfig{
+		KeyPair:          key,
+		Certificate:      cert,
+		Intermediate:     s.intermediateCert,
+		HandshakeTimeout: 15 * time.Second,
+		ClientVerify:     &transport.VerifyConfig{InsecureSkipVerify: true},
+	}
+	srv, err := transport.NewServer(conn, cfg)
+	if err != nil {
+		return err
+	}
+	slog.Info("Starting hop server", "address", s.cfg.HopAddress)
+	srv.Serve()
+	return nil
 }

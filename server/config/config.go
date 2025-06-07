@@ -18,6 +18,7 @@ type Config struct {
 	CertValiditySeconds int
 
 	ServerAddress string
+	HopAddress    string
 }
 
 // Load reads configuration from environment variables or a config file.
@@ -35,6 +36,7 @@ func Load() (*Config, error) {
 
 	// Set default values
 	viper.SetDefault("ServerAddress", ":8080")
+	viper.SetDefault("hop.address", ":7777")
 	viper.SetDefault("CertValidityHours", 24)
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -50,6 +52,7 @@ func Load() (*Config, error) {
 		IntermediateKeyPath: viper.GetString("ca.key_path"),
 		CertValiditySeconds: viper.GetInt("credential.validity_seconds"),
 		ServerAddress:       viper.GetString("ServerAddress"),
+		HopAddress:          viper.GetString("hop.address"),
 	}
 	slog.Info("github", "client_id", cfg.GitHubClientID)
 
