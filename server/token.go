@@ -51,7 +51,10 @@ func SignStateToString(state *State, signingKey ed25519.PrivateKey) (string, err
 	buf := bytes.Buffer{}
 	enc := base64.NewEncoder(base64.URLEncoding, &buf)
 	if _, err := enc.Write(raw); err != nil {
-		return "", nil
+		return "", err
+	}
+	if err := enc.Close(); err != nil {
+		return "", err
 	}
 	return buf.String(), nil
 }

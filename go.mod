@@ -3,12 +3,12 @@ module hop.computer/vend
 go 1.23.3
 
 require (
+	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/spf13/viper v1.20.1
 	golang.org/x/oauth2 v0.30.0
 )
 
 require (
-	github.com/fxamacker/cbor/v2 v2.8.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
