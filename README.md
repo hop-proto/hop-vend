@@ -19,6 +19,7 @@ Set `client_id` and `client_secret` in the `[github]` section of `config.toml`. 
 In the `[ca]` section, set `cert_path` and `key_path`.
 
 The properties of the issued certificate are set in the `[credential]` section.
+Configure the Hop server in the `[hop]` section.
 
 ## Developing and Building
 
@@ -26,7 +27,7 @@ This project depends on Hop itself, so your Go installation must be able to pull
 
 To do this, add the following to `~/.gitconfig`:
 
-``` 
+```
 [url "ssh://git@github.com/hop-proto/hop-go"]
         insteadOf = https://github.com/hop-proto/hop-go
 ```
