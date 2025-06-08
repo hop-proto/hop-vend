@@ -24,7 +24,6 @@ jobs:
     env:
       GO111MODULE: on
       GOPRIVATE: github.com/hop-proto/*
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:

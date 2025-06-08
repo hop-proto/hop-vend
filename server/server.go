@@ -303,7 +303,8 @@ func (s *Server) startHop() error {
 		HandshakeTimeout: 15 * time.Second,
 		ClientVerify:     &transport.VerifyConfig{InsecureSkipVerify: true},
 	}
-	srv, err := transport.NewServer(conn, cfg)
+	udpLike := transport.NewUDPMsgConn(conn.(*net.UDPConn))
+	srv, err := transport.NewServer(udpLike, cfg)
 	if err != nil {
 		return err
 	}
