@@ -30,6 +30,7 @@ type Server struct {
 	stateVerifyKey   ed25519.PublicKey
 	stateSigningKey  ed25519.PrivateKey
 	intermediateCert *certs.Certificate
+	apiBaseURL       string
 }
 
 func New(cfg *config.Config) *Server {
@@ -63,6 +64,7 @@ func New(cfg *config.Config) *Server {
 		stateVerifyKey:   public,
 		stateSigningKey:  private,
 		intermediateCert: inter,
+		apiBaseURL:       "https://api.github.com",
 	}
 }
 
@@ -186,7 +188,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	client := s.oauthConfig.Client(ctx, token)
 	var user gh.User
 	{
-		resp, err := client.Get("https://api.github.com/user")
+		resp, err := client.Get(s.apiBaseURL + "/user")
 
 		if err != nil || resp.StatusCode != http.StatusOK {
 			http.Error(w, "failed to fetch user", http.StatusInternalServerError)
@@ -222,9 +224,9 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// Use the username of the user and the org name from the configuration to
 	// check membership. There is an API call specific for this that returns
 	// 204.
-	// https://api.github.com/orgs/ORG/members/USERNAME
+	// {apiBase}/orgs/ORG/members/USERNAME
 	{
-		url := fmt.Sprintf("https://api.github.com/orgs/%s/members/%s", url.PathEscape(s.cfg.GitHubOrg), url.PathEscape(user.Login))
+		url := fmt.Sprintf("%s/orgs/%s/members/%s", s.apiBaseURL, url.PathEscape(s.cfg.GitHubOrg), url.PathEscape(user.Login))
 		slog.Info("github api", "url", url, "user", user.Login, "org", s.cfg.GitHubOrg)
 		resp, err := client.Get(url)
 
