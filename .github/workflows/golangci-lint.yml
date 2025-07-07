@@ -34,11 +34,13 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Deps
-        run: go get ./...
+        run: go get ./... && go get -t ./...
       - name: Build
-        run: go build ./...
+        run: make build
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.1
           args: --config=.golangci.yml
+      - name: Test
+        run: make test
