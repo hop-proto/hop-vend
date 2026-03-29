@@ -3,9 +3,13 @@ package server
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -310,7 +314,38 @@ func (s *Server) startHop() error {
 	if err != nil {
 		return err
 	}
+	go s.acceptHopConnections(srv)
 	slog.Info("Starting hop server", "address", s.cfg.HopAddress)
 	srv.Serve()
 	return nil
+}
+
+func (s *Server) acceptHopConnections(srv *transport.Server) {
+	for {
+		h, err := srv.Accept()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			slog.Error("accept failed", "error", err)
+			continue
+		}
+		go func(h *transport.Handle) {
+			defer h.Close()
+			leaf := h.FetchClientLeaf()
+			if leaf == nil {
+				slog.Error("connection missing client cert")
+				return
+			}
+			resp := computeStringFromKey(leaf.PublicKey[:])
+			if _, err := h.Write([]byte(resp)); err != nil {
+				slog.Error("write failed", "error", err)
+			}
+		}(h)
+	}
+}
+
+func computeStringFromKey(pub []byte) string {
+	sum := sha256.Sum256(pub)
+	return hex.EncodeToString(sum[:])
 }
