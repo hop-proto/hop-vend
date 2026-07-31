@@ -147,5 +147,7 @@ make lint
 make test
 ```
 
-The test suite uses local mocks for provider endpoints and does not require
-external credentials.
+The test suite includes a complete in-memory OIDC provider and exercises
+discovery, browser redirects, signed ID-token validation, authorization, Hop
+enrollment, certificate issuance, and client persistence without external
+credentials.
