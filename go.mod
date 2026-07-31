@@ -1,12 +1,13 @@
 module hop.computer/vend
 
-go 1.24
+go 1.25.0
 
 require (
+	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/golangci/golangci-lint v1.64.8
 	github.com/spf13/viper v1.20.1
-	golang.org/x/oauth2 v0.30.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
@@ -56,6 +57,7 @@ require (
 	github.com/fzipp/gocyclo v0.6.0 // indirect
 	github.com/ghostiam/protogetter v0.3.9 // indirect
 	github.com/go-critic/go-critic v0.12.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-toolsmith/astcast v1.1.0 // indirect
 	github.com/go-toolsmith/astcopy v1.1.0 // indirect
 	github.com/go-toolsmith/astequal v1.2.0 // indirect
