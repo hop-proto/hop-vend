@@ -95,7 +95,11 @@ func Enroll(ctx context.Context, cfg Config) (*protocol.Credential, error) {
 	if login.LoginURL == "" {
 		return nil, errors.New("server returned an empty login URL")
 	}
-	fmt.Fprintf(cfg.Output, "Open this URL to authenticate with GitHub:\n%s\n\nWaiting for authorization...\n", login.LoginURL)
+	fmt.Fprintf(
+		cfg.Output,
+		"Open this URL to authenticate with your identity provider:\n%s\n\nWaiting for authorization...\n",
+		login.LoginURL,
+	)
 
 	var credential protocol.Credential
 	if err := decoder.Decode(&credential); err != nil {
@@ -175,7 +179,7 @@ func validateCredential(
 		return errors.New("issued certificate is for a different key")
 	}
 	if credential.Username == "" || !leaf.MatchesName(certs.RawStringName(credential.Username)) {
-		return errors.New("issued certificate does not contain the authenticated GitHub username")
+		return errors.New("issued certificate does not contain the authenticated identity")
 	}
 	now := time.Now()
 	if leaf.IssuedAt.After(now.Add(time.Minute)) || !leaf.ExpiresAt.After(now) {

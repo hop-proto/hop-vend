@@ -2,10 +2,10 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,30 +18,25 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/github"
-
 	"hop.computer/hop/certs"
 	"hop.computer/hop/keys"
 	"hop.computer/hop/pkg"
 	"hop.computer/hop/transport"
 	"hop.computer/vend/protocol"
 	"hop.computer/vend/server/config"
-	"hop.computer/vend/server/gh"
 )
 
 const stateCookieName = "hop_vend_state"
 
-// Server authenticates GitHub organization members and issues Hop credentials.
+// Server authenticates authorized identities and issues Hop credentials.
 type Server struct {
 	cfg              *config.Config
-	oauthConfig      *oauth2.Config
+	authenticator    Authenticator
+	authorizer       Authorizer
 	stateVerifyKey   ed25519.PublicKey
 	stateSigningKey  ed25519.PrivateKey
 	intermediateCert *certs.Certificate
 	intermediatePEM  string
-	apiBaseURL       string
-	apiVersion       string
 	now              func() time.Time
 	pendingMu        sync.Mutex
 	pending          map[string]*pendingRequest
@@ -49,6 +44,22 @@ type Server struct {
 
 // New loads the issuing material and creates a Server.
 func New(cfg *config.Config) *Server {
+	authenticator, authorizer, err := authenticationForConfig(cfg)
+	if err != nil {
+		pkg.Panicf("unable to configure authentication: %s", err)
+	}
+	return NewWithAuth(cfg, authenticator, authorizer)
+}
+
+// NewWithAuth loads the issuing material and creates a Server using the
+// supplied authentication and authorization implementations.
+func NewWithAuth(cfg *config.Config, authenticator Authenticator, authorizer Authorizer) *Server {
+	if authenticator == nil {
+		pkg.Panicf("authenticator is required")
+	}
+	if authorizer == nil {
+		pkg.Panicf("authorizer is required")
+	}
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		pkg.Panicf("unable to generate ed25519 key: %s", err)
@@ -84,20 +95,13 @@ func New(cfg *config.Config) *Server {
 	}
 
 	return &Server{
-		cfg: cfg,
-		oauthConfig: &oauth2.Config{
-			ClientID:     cfg.GitHubClientID,
-			ClientSecret: cfg.GitHubClientSecret,
-			RedirectURL:  strings.TrimRight(cfg.PublicURL, "/") + "/callback",
-			Scopes:       []string{"read:user", "read:org"},
-			Endpoint:     github.Endpoint,
-		},
+		cfg:              cfg,
+		authenticator:    authenticator,
+		authorizer:       authorizer,
 		stateVerifyKey:   public,
 		stateSigningKey:  private,
 		intermediateCert: intermediate,
 		intermediatePEM:  string(intermediatePEM),
-		apiBaseURL:       "https://api.github.com",
-		apiVersion:       "2022-11-28",
 		now:              time.Now,
 		pending:          make(map[string]*pendingRequest),
 	}
@@ -112,7 +116,8 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// Start serves the Hop enrollment protocol and the OAuth endpoints.
+// Start serves the Hop enrollment protocol and browser authentication
+// endpoints.
 func (s *Server) Start() error {
 	if _, err := s.startHop(); err != nil {
 		return fmt.Errorf("start Hop enrollment server: %w", err)
@@ -148,7 +153,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	random := make([]byte, 32)
 	if _, err := rand.Read(random); err != nil {
-		http.Error(w, "unable to create OAuth state", http.StatusInternalServerError)
+		http.Error(w, "unable to create authentication state", http.StatusInternalServerError)
 		return
 	}
 	state := State{
@@ -159,7 +164,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	signedState, err := SignStateToString(&state, s.stateSigningKey)
 	if err != nil {
-		http.Error(w, "unable to create OAuth state", http.StatusInternalServerError)
+		http.Error(w, "unable to create authentication state", http.StatusInternalServerError)
 		return
 	}
 
@@ -173,18 +178,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   secureCookie,
 		SameSite: http.SameSiteLaxMode,
 	})
-	authURL := s.oauthConfig.AuthCodeURL(signedState, oauth2.AccessTypeOnline)
-	http.Redirect(w, r, authURL, http.StatusFound)
+	if err := s.authenticator.Begin(w, r, AuthTransaction{
+		State: signedState,
+		Nonce: base64.RawURLEncoding.EncodeToString(random),
+	}); err != nil {
+		s.failRequest(requestID, "unable to start authentication")
+		http.Error(w, "unable to start authentication", http.StatusBadGateway)
+	}
 }
 
 func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	stateParam := r.URL.Query().Get("state")
-	if stateParam == "" {
-		http.Error(w, "missing state", http.StatusBadRequest)
+	stateParam, err := s.authenticator.State(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	rawURLState, err := RawStateTokenFromString(stateParam)
@@ -210,7 +216,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(stateParam)) != 1 {
-		s.failRequest(decoded.RequestID, "OAuth state did not match")
+		s.failRequest(decoded.RequestID, "authentication state did not match")
 		http.Error(w, "mismatched state", http.StatusBadRequest)
 		return
 	}
@@ -221,42 +227,30 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.clearStateCookie(w)
 
-	code := r.URL.Query().Get("code")
-	if code == "" {
-		s.failRequest(decoded.RequestID, "GitHub did not return an authorization code")
-		http.Error(w, "missing authorization code", http.StatusBadRequest)
-		return
-	}
-	token, err := s.oauthConfig.Exchange(r.Context(), code)
+	principal, err := s.authenticator.Complete(r.Context(), r, AuthTransaction{
+		State: stateParam,
+		Nonce: base64.RawURLEncoding.EncodeToString(decoded.Random),
+	})
 	if err != nil {
-		s.failRequest(decoded.RequestID, "GitHub authorization failed")
-		http.Error(w, "failed to exchange GitHub authorization", http.StatusBadGateway)
+		s.failRequest(decoded.RequestID, "authentication failed")
+		http.Error(w, "authentication failed", http.StatusBadGateway)
 		return
 	}
-
-	client := s.oauthConfig.Client(r.Context(), token)
-	user, err := s.fetchGitHubUser(r.Context(), client)
-	if err != nil {
-		s.failRequest(decoded.RequestID, "GitHub user lookup failed")
-		http.Error(w, "failed to fetch GitHub user", http.StatusBadGateway)
-		return
-	}
-	member, err := s.isActiveOrgMember(r.Context(), client)
-	if err != nil {
-		s.failRequest(decoded.RequestID, "GitHub organization lookup failed")
-		http.Error(w, "failed to check GitHub organization membership", http.StatusBadGateway)
-		return
-	}
-	if !member {
-		s.failRequest(decoded.RequestID, "GitHub account is not an active member of "+s.cfg.GitHubOrg)
-		http.Error(w, "active organization membership required", http.StatusForbidden)
+	if err := s.authorizer.Authorize(r.Context(), principal); err != nil {
+		if errors.Is(err, ErrUnauthorized) {
+			s.failRequest(decoded.RequestID, err.Error())
+			http.Error(w, "identity is not authorized", http.StatusForbidden)
+			return
+		}
+		s.failRequest(decoded.RequestID, "authorization check failed")
+		http.Error(w, "authorization check failed", http.StatusBadGateway)
 		return
 	}
 
 	credential, err := issueLeafFor(
 		s.intermediateCert,
 		pending.publicKey,
-		certs.RawStringName(user.Login),
+		certs.RawStringName(principal.Name),
 		s.cfg.CertValidity,
 		s.now(),
 	)
@@ -274,7 +268,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	result := protocol.Credential{
 		Certificate:  string(credentialPEM),
 		Intermediate: s.intermediatePEM,
-		Username:     user.Login,
+		Username:     principal.Name,
 		ExpiresAt:    credential.ExpiresAt,
 	}
 	if err := s.completePending(decoded.RequestID, result); err != nil {
@@ -283,7 +277,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintf(w, "Credential issued for %s. You can return to the terminal.\n", user.Login)
+	fmt.Fprintf(w, "Credential issued for %s. You can return to the terminal.\n", principal.Name)
 }
 
 func (s *Server) clearStateCookie(w http.ResponseWriter) {
@@ -303,60 +297,6 @@ func (s *Server) failRequest(id, message string) {
 		return
 	}
 	_ = s.completePending(id, protocol.Credential{Error: message})
-}
-
-func (s *Server) fetchGitHubUser(ctx context.Context, client *http.Client) (*gh.User, error) {
-	var user gh.User
-	status, err := s.getGitHubJSON(ctx, client, s.apiBaseURL+"/user", &user)
-	if err != nil {
-		return nil, err
-	}
-	if status != http.StatusOK || user.Login == "" {
-		return nil, fmt.Errorf("GitHub user endpoint returned status %d", status)
-	}
-	return &user, nil
-}
-
-func (s *Server) isActiveOrgMember(ctx context.Context, client *http.Client) (bool, error) {
-	endpoint := fmt.Sprintf("%s/user/memberships/orgs/%s", s.apiBaseURL, url.PathEscape(s.cfg.GitHubOrg))
-	var membership gh.Membership
-	status, err := s.getGitHubJSON(ctx, client, endpoint, &membership)
-	if err != nil {
-		return false, err
-	}
-	switch status {
-	case http.StatusOK:
-		return membership.State == "active", nil
-	case http.StatusNotFound:
-		return false, nil
-	default:
-		return false, fmt.Errorf("GitHub membership endpoint returned status %d", status)
-	}
-}
-
-func (s *Server) getGitHubJSON(ctx context.Context, client *http.Client, endpoint string, out any) (int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", s.apiVersion)
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
-		return resp.StatusCode, nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return resp.StatusCode, nil
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out); err != nil {
-		return resp.StatusCode, err
-	}
-	return resp.StatusCode, nil
 }
 
 func (s *Server) startHop() (*transport.Server, error) {
