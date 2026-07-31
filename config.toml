@@ -1,3 +1,6 @@
+[authentication]
+provider = "github"
+
 [github]
 client_id = "Iv23liA9njJPZDKsbFHQ"
 client_secret = ""
