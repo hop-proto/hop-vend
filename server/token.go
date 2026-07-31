@@ -13,7 +13,9 @@ var ErrInvalidSignature = errors.New("invalid token signature")
 
 type State struct {
 	Random    []byte `cbor:"random"`
+	RequestID string `cbor:"request_id"`
 	PublicKey string `cbor:"public_key"`
+	ExpiresAt int64  `cbor:"expires_at"`
 }
 
 type RawStateToken []byte
@@ -24,7 +26,7 @@ type SignedStateToken struct {
 }
 
 func RawStateTokenFromString(s string) (RawStateToken, error) {
-	b, err := base64.URLEncoding.DecodeString(s)
+	b, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +51,7 @@ func SignStateToString(state *State, signingKey ed25519.PrivateKey) (string, err
 		return "", err
 	}
 	buf := bytes.Buffer{}
-	enc := base64.NewEncoder(base64.URLEncoding, &buf)
+	enc := base64.NewEncoder(base64.RawURLEncoding, &buf)
 	if _, err := enc.Write(raw); err != nil {
 		return "", err
 	}

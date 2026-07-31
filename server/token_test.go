@@ -14,7 +14,9 @@ func TestSignAndVerifyStateToken(t *testing.T) {
 
 	state := &State{
 		Random:    []byte("some-random-state"),
+		RequestID: "request-id",
 		PublicKey: "pub",
+		ExpiresAt: 1234,
 	}
 
 	// Sign and encode the state to string
@@ -35,7 +37,10 @@ func TestSignAndVerifyStateToken(t *testing.T) {
 		t.Fatalf("failed to verify token: %v", err)
 	}
 
-	if !bytes.Equal(decodedState.Random, state.Random) || decodedState.PublicKey != state.PublicKey {
+	if !bytes.Equal(decodedState.Random, state.Random) ||
+		decodedState.RequestID != state.RequestID ||
+		decodedState.PublicKey != state.PublicKey ||
+		decodedState.ExpiresAt != state.ExpiresAt {
 		t.Errorf("decoded state does not match original")
 	}
 
