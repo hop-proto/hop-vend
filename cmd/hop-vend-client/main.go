@@ -27,7 +27,7 @@ func main() {
 	flag.StringVar(&cfg.RootCAPath, "ca", filepath.Join(userDirectory, "root.cert"), "trusted Hop root certificate path")
 	flag.StringVar(&cfg.ServerName, "server-name", "vend-server", "expected name on the Hop Vend server certificate")
 	flag.BoolVar(&cfg.Insecure, "insecure", false, "skip Hop Vend server certificate verification")
-	flag.DurationVar(&cfg.Timeout, "timeout", 10*time.Minute, "maximum time to complete GitHub authentication")
+	flag.DurationVar(&cfg.Timeout, "timeout", 10*time.Minute, "maximum time to complete provider authentication")
 	flag.Parse()
 	cfg.Output = os.Stdout
 

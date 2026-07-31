@@ -16,9 +16,9 @@ import (
 	"hop.computer/vend/server/config"
 )
 
-// TestOAuthFlow exercises the login and callback handlers with a mocked
+// TestGitHubFlow exercises the login and callback handlers with a mocked
 // GitHub OAuth and API server.
-func TestOAuthFlow(t *testing.T) {
+func TestGitHubFlow(t *testing.T) {
 	ghMux := http.NewServeMux()
 	ghMux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
@@ -35,7 +35,7 @@ func TestOAuthFlow(t *testing.T) {
 			t.Fatalf("authorization header = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"login":"testuser"}`)
+		fmt.Fprint(w, `{"login":"testuser","id":1234,"type":"User"}`)
 	})
 	ghMux.HandleFunc("/user/memberships/orgs/testorg", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -45,9 +45,6 @@ func TestOAuthFlow(t *testing.T) {
 	defer githubServer.Close()
 
 	cfg := &config.Config{
-		GitHubClientID:      "id",
-		GitHubClientSecret:  "secret",
-		GitHubOrg:           "testorg",
 		IntermediateCAPath:  "../intermediate.pem",
 		IntermediateKeyPath: "../intermediate.key.pem",
 		CertValidity:        time.Hour,
@@ -55,12 +52,17 @@ func TestOAuthFlow(t *testing.T) {
 		PublicURL:           "https://vend.example",
 		HopServerName:       "vend-server",
 	}
-	srv := New(cfg)
-	srv.oauthConfig.Endpoint = oauth2.Endpoint{
-		AuthURL:  githubServer.URL + "/auth",
-		TokenURL: githubServer.URL + "/token",
-	}
-	srv.apiBaseURL = githubServer.URL
+	authenticator := NewGitHubAuthenticator(GitHubAuthenticatorConfig{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		RedirectURL:  cfg.PublicURL + "/callback",
+		APIBaseURL:   githubServer.URL,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  githubServer.URL + "/auth",
+			TokenURL: githubServer.URL + "/token",
+		},
+	})
+	srv := NewWithAuth(cfg, authenticator, GitHubOrganizationAuthorizer{Organization: "testorg"})
 	clientKey := keys.GenerateNewX25519KeyPair()
 	requestID, pending, err := srv.addPending(clientKey.Public)
 	if err != nil {
@@ -117,7 +119,7 @@ func TestOAuthFlow(t *testing.T) {
 	}
 }
 
-func TestOAuthFlowRejectsNonMember(t *testing.T) {
+func TestGitHubFlowRejectsNonMember(t *testing.T) {
 	ghMux := http.NewServeMux()
 	ghMux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -125,7 +127,7 @@ func TestOAuthFlowRejectsNonMember(t *testing.T) {
 	})
 	ghMux.HandleFunc("/user", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"login":"outsider"}`)
+		fmt.Fprint(w, `{"login":"outsider","id":4321,"type":"User"}`)
 	})
 	ghMux.HandleFunc("/user/memberships/orgs/testorg", func(w http.ResponseWriter, _ *http.Request) {
 		http.NotFound(w, nil)
@@ -133,19 +135,25 @@ func TestOAuthFlowRejectsNonMember(t *testing.T) {
 	githubServer := httptest.NewServer(ghMux)
 	defer githubServer.Close()
 
-	srv := New(&config.Config{
-		GitHubClientID:      "id",
-		GitHubClientSecret:  "secret",
-		GitHubOrg:           "testorg",
+	cfg := &config.Config{
 		IntermediateCAPath:  "../intermediate.pem",
 		IntermediateKeyPath: "../intermediate.key.pem",
 		CertValidity:        time.Hour,
 		RequestTimeout:      10 * time.Minute,
 		PublicURL:           "https://vend.example",
 		HopServerName:       "vend-server",
+	}
+	authenticator := NewGitHubAuthenticator(GitHubAuthenticatorConfig{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		RedirectURL:  cfg.PublicURL + "/callback",
+		APIBaseURL:   githubServer.URL,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  githubServer.URL + "/auth",
+			TokenURL: githubServer.URL + "/token",
+		},
 	})
-	srv.oauthConfig.Endpoint = oauth2.Endpoint{AuthURL: githubServer.URL + "/auth", TokenURL: githubServer.URL + "/token"}
-	srv.apiBaseURL = githubServer.URL
+	srv := NewWithAuth(cfg, authenticator, GitHubOrganizationAuthorizer{Organization: "testorg"})
 	requestID, pending, err := srv.addPending(keys.GenerateNewX25519KeyPair().Public)
 	if err != nil {
 		t.Fatal(err)
