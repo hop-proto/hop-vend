@@ -17,7 +17,7 @@ func main() {
 
 	srv := server.New(cfg)
 	if err := srv.Start(); err != nil {
-		slog.Error("failed to load config", "error", err)
+		slog.Error("server exited", "error", err)
 		log.Fatalf("server exited with error: %v", err)
 	}
 }
