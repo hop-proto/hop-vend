@@ -1,6 +1,6 @@
 module hop.computer/vend
 
-go 1.23.3
+go 1.24
 
 require (
 	github.com/fxamacker/cbor/v2 v2.8.0
@@ -44,6 +44,7 @@ require (
 	github.com/charithe/durationcheck v0.0.10 // indirect
 	github.com/chavacava/garif v0.1.0 // indirect
 	github.com/ckaznocha/intrange v0.3.0 // indirect
+	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/curioswitch/go-reassign v0.3.0 // indirect
 	github.com/daixiang0/gci v0.13.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -199,4 +200,4 @@ require (
 	hop.computer/hop v0.0.0
 )
 
-replace hop.computer/hop v0.0.0 => github.com/hop-proto/hop-go v0.0.0-20250512032955-70afe8e929d2
+replace hop.computer/hop v0.0.0 => github.com/hop-proto/hop-go v0.0.0-20260728013030-3451b0d239b8
