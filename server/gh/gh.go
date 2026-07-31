@@ -22,3 +22,9 @@ type Organization struct {
 	ID    int64  `json:"id"`
 	URL   string `json:"url"`
 }
+
+// Membership is returned by /user/memberships/orgs/{org}.
+type Membership struct {
+	State string `json:"state"`
+	Role  string `json:"role"`
+}

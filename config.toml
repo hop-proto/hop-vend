@@ -9,6 +9,12 @@ key_path = "./intermediate.key.pem"
 
 [credential]
 validity_seconds = 3600
+request_timeout_seconds = 600
+
+[server]
+address = ":8080"
+public_url = "http://localhost:8080"
 
 [hop]
 address = ":7777"
+server_name = "vend-server"

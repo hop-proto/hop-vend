@@ -1,13 +1,17 @@
+// Package config loads Hop Vend configuration from TOML and the environment.
 package config
 
 import (
 	"fmt"
-	"log/slog"
+	"net/url"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
+// Config contains the validated Hop Vend configuration.
 type Config struct {
 	GitHubClientID     string
 	GitHubClientSecret string
@@ -15,67 +19,85 @@ type Config struct {
 
 	IntermediateCAPath  string
 	IntermediateKeyPath string
-	CertValiditySeconds int
+	CertValidity        time.Duration
+	RequestTimeout      time.Duration
 
 	ServerAddress string
+	PublicURL     string
 	HopAddress    string
+	HopServerName string
 }
 
 // Load reads configuration from environment variables or a config file.
 func Load() (*Config, error) {
-	viper.SetConfigName("config") // name of config file (without extension)
-	viper.SetConfigType("toml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./config")
-	viper.AddConfigPath("/etc/hop-vend/")
+	v := viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("toml")
+	v.AddConfigPath(".")
+	v.AddConfigPath("./config")
+	v.AddConfigPath("/etc/hop-vend/")
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.SetEnvPrefix("hop_vend")
 
-	// Environment variables override config file
-	viper.AutomaticEnv()
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.SetEnvPrefix("hop_vend")
+	v.SetDefault("server.address", ":8080")
+	v.SetDefault("hop.address", ":7777")
+	v.SetDefault("hop.server_name", "vend-server")
+	v.SetDefault("credential.validity_seconds", 3600)
+	v.SetDefault("credential.request_timeout_seconds", 600)
 
-	// Set default values
-	viper.SetDefault("ServerAddress", ":8080")
-	viper.SetDefault("hop.address", ":7777")
-	viper.SetDefault("CertValidityHours", 24)
-
-	if err := viper.ReadInConfig(); err != nil {
-		// It's okay if config file is missing; rely on env vars
-		fmt.Printf("No config file found, relying on env vars: %v\n", err)
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("read config: %w", err)
+		}
 	}
 
 	cfg := &Config{
-		GitHubClientID:      viper.GetString("github.client_id"),
-		GitHubClientSecret:  viper.GetString("github.client_secret"),
-		GitHubOrg:           viper.GetString("github.org"),
-		IntermediateCAPath:  viper.GetString("ca.cert_path"),
-		IntermediateKeyPath: viper.GetString("ca.key_path"),
-		CertValiditySeconds: viper.GetInt("credential.validity_seconds"),
-		ServerAddress:       viper.GetString("ServerAddress"),
-		HopAddress:          viper.GetString("hop.address"),
+		GitHubClientID:      v.GetString("github.client_id"),
+		GitHubClientSecret:  v.GetString("github.client_secret"),
+		GitHubOrg:           v.GetString("github.org"),
+		IntermediateCAPath:  v.GetString("ca.cert_path"),
+		IntermediateKeyPath: v.GetString("ca.key_path"),
+		CertValidity:        time.Duration(v.GetInt("credential.validity_seconds")) * time.Second,
+		RequestTimeout:      time.Duration(v.GetInt("credential.request_timeout_seconds")) * time.Second,
+		ServerAddress:       v.GetString("server.address"),
+		PublicURL:           strings.TrimRight(v.GetString("server.public_url"), "/"),
+		HopAddress:          v.GetString("hop.address"),
+		HopServerName:       v.GetString("hop.server_name"),
 	}
-	slog.Info("github", "client_id", cfg.GitHubClientID)
-
-	// Basic validation
-	missingFields := []string{}
-	if cfg.GitHubClientID == "" {
-		missingFields = append(missingFields, "GitHubClientID")
+	if err := cfg.validate(); err != nil {
+		return nil, err
 	}
-	if cfg.GitHubClientSecret == "" {
-		missingFields = append(missingFields, "github.client_secret")
-	}
-	if cfg.GitHubOrg == "" {
-		missingFields = append(missingFields, "GitHubOrg")
-	}
-	if cfg.IntermediateCAPath == "" {
-		missingFields = append(missingFields, "IntermedaiteCAPath")
-	}
-	if cfg.IntermediateKeyPath == "" {
-		missingFields = append(missingFields, "IntermediateKeyPath")
-	}
-	if len(missingFields) > 0 {
-		return nil, fmt.Errorf("missing required configuration fields: %v", missingFields)
-	}
-
 	return cfg, nil
+}
+
+func (c *Config) validate() error {
+	missing := make([]string, 0, 6)
+	for name, value := range map[string]string{
+		"github.client_id":     c.GitHubClientID,
+		"github.client_secret": c.GitHubClientSecret,
+		"github.org":           c.GitHubOrg,
+		"ca.cert_path":         c.IntermediateCAPath,
+		"ca.key_path":          c.IntermediateKeyPath,
+		"server.public_url":    c.PublicURL,
+	} {
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("missing required configuration fields: %s", strings.Join(missing, ", "))
+	}
+	publicURL, err := url.Parse(c.PublicURL)
+	if err != nil || publicURL.Host == "" || (publicURL.Scheme != "http" && publicURL.Scheme != "https") {
+		return fmt.Errorf("server.public_url must be an absolute HTTP(S) URL")
+	}
+	if c.CertValidity <= 0 {
+		return fmt.Errorf("credential.validity_seconds must be positive")
+	}
+	if c.RequestTimeout <= 0 {
+		return fmt.Errorf("credential.request_timeout_seconds must be positive")
+	}
+	return nil
 }
